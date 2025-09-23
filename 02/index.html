@@ -1,2 +1,104 @@
-Ready for assignment 2.
+<html>
+  <head>
+    <title>Assignment 2: 3D Art</title>
 
+    <style>
+      body {
+        background-color: black;
+      }
+    </style>
+
+    <!-- part 1:-->
+    <script type="text/javascript" src="https://get.goXTK.com/xtk_edge.js"></script>
+    <script type="text/javascript" src="loader.js"></script>
+
+    <script>
+      const SIZE = 5;
+      const GAP = 20;
+      var SELECTED_CUBE = null
+      var ROTATE_CAMERA = null
+
+      window.onload = function() {
+        r = new X.renderer3D();
+        r.init();
+         
+        // part 2: (1331 cubes)
+        for (var z=-5; z < 6; z++) {
+          for (var y=-5; y < 6; y++) {
+            for(var x=-5; x < 6; x++) {
+
+              new_cube = new X.cube();
+              new_cube.transform.translateX((SIZE + GAP) * x);
+              new_cube.transform.translateY((SIZE + GAP) * y);
+              new_cube.transform.translateZ((SIZE + GAP) * z);
+              
+              r.add(new_cube);
+            }
+          }
+        }
+
+        // part 3:
+        r.camera.position = [0, 0, 300];
+        r.render();
+
+        //part 4:
+        r.interactor.onMouseMove = function(event) {
+          cubeid = r.pick(event.offsetX, event.offsetY);
+          
+          if (cubeid !== 0) {
+            cube = r.get(cubeid);
+            SELECTED_CUBE = r.get(cubeid);
+          }
+        };
+        
+        ROTATE_CAMERA = false;
+
+        // part 5:
+        window.onkeypress = function(e) {
+          if (SELECTED_CUBE) {
+            if (e.key == 'q') { // q: hide 
+              SELECTED_CUBE.visible = false;
+            }
+            
+            if (e.key == 'w') { // w: change color
+              const rColor = Math.random();
+              const gColor = Math.random();
+              const bColor = Math.random();
+              SELECTED_CUBE.color = [rColor, gColor, bColor];
+            }
+
+            if (e.key == 'e') { // e: rotate
+              SELECTED_CUBE.transform.rotateX(10);
+            }
+          }
+
+          // part 6:
+          if (e.key == 'b') { // b: spin camera
+            ROTATE_CAMERA = !ROTATE_CAMERA;
+          }
+
+          // part 7:
+          if (e.key == 'o') { // o: download
+            download();
+          }
+
+          if (e.key == 'l') { // l: upload
+            upload("scene.json");
+          }
+        };
+
+        // part 6:
+        r.onRender = function() {
+          if (ROTATE_CAMERA) {
+            r.camera.rotate([1, 0]);
+          }
+        };
+
+      };
+
+      </script>
+
+  </head>
+  <body>
+  </body>
+</html>
