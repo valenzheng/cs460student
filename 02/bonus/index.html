@@ -1,0 +1,127 @@
+<html>
+  <head>
+    <title>Assignment 2: 3D Art</title>
+
+    <style>
+      body {
+        background-color: black;
+      }
+    </style>
+
+    <!-- part 1:-->
+    <script type="text/javascript" src="https://get.goXTK.com/xtk_edge.js"></script>
+    <script type="text/javascript" src="loader.js"></script>
+
+    <script>
+      const SIZE = 1;
+      const GAP = 13;
+      var SELECTED_SPHERE = null
+      var ROTATE_CAMERA = null
+
+      var CAMERA = [];
+      var CYCLING = false;
+      var index = 0;
+      var cycleInterval = null;
+
+      window.onload = function() {
+        r = new X.renderer3D();
+        r.init();
+         
+        // part 2: (1331 spheres)
+        for (var z=-5; z < 6; z++) {
+          for (var y=-5; y < 6; y++) {
+            for(var x=-5; x < 6; x++) {
+
+              new_sphere = new X.sphere();
+              new_sphere.radius = Math.random() * 5 + 1;
+              new_sphere.transform.translateX((SIZE + GAP) * x);
+              new_sphere.transform.translateY((SIZE + GAP) * y);
+              new_sphere.transform.translateZ((SIZE + GAP) * z);
+              
+              r.add(new_sphere);
+            }
+          }
+        }
+
+        // part 3:
+        r.camera.position = [0, 0, 300];
+        r.render();
+
+        //part 4:
+        r.interactor.onMouseMove = function(event) {
+          sphereid = r.pick(event.offsetX, event.offsetY);
+          
+          if (sphereid !== 0) {
+            sphere = r.get(sphereid);
+            SELECTED_SPHERE = r.get(sphereid);
+          }
+        };
+        
+        // part 5:
+        window.onkeypress = function(e) {
+
+          if (SELECTED_SPHERE) {
+            if (e.key == 'q') { // q: hide 
+              SELECTED_SPHERE.visible = false;
+            }
+            
+            if (e.key == 'w') { // w: change color
+              const rColor = Math.random();
+              const gColor = Math.random();
+              const bColor = Math.random();
+              SELECTED_SPHERE.color = [rColor, gColor, bColor];
+            }
+
+            if (e.key == 'e') { // e: rotate
+              SELECTED_SPHERE.transform.rotateX(10);
+            }
+          }
+
+          // part 6:
+          if (e.key == 'b') { // b: spin camera
+            ROTATE_CAMERA = !ROTATE_CAMERA;
+          }
+
+          // part 7:
+          if (e.key == 'o') { // o: download
+            download();
+          }
+
+          if (e.key == 'l') { // l: upload
+            upload("scene.json");
+          }
+          
+          // bonus:
+          if (e.key === 'c') {
+            CAMERA.push(new Float32Array(r.camera.view));
+            console.log(CAMERA);
+          }
+
+          if (e.key === 'v') {
+            if (!CYCLING && CAMERA.length > 0) {
+              CYCLING = true;
+                cycleInterval = setInterval(function() {
+                  r.camera.view = CAMERA[index];
+                  index = (index + 1) % CAMERA.length;
+              }, 1000);
+            } else if (CYCLING) {
+              CYCLING = false;
+                clearInterval(cycleInterval)
+            }
+          }
+        };
+
+        // part 6:
+        r.onRender = function() {
+          if (ROTATE_CAMERA) {
+            r.camera.rotate([1, 0]);
+          }
+        };
+      };
+
+      </script>
+
+  </head>
+  <body>
+  </body>
+</html>
