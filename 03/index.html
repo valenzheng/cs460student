@@ -30,7 +30,8 @@
       var invisible_plane;
       var LASTOBJECT = null;   
       var isDragging = false;  
-      var FLICKERING = false; 
+      var FLICKERING = false;
+      var WIREFRAME = false; 
       var toruses = [];        
 
       window.onload = function() {
@@ -66,7 +67,10 @@
 
         // initial torus
         var initGeo = new THREE.TorusKnotGeometry(10, 3, 100, 16);
-        var initMat = new THREE.MeshStandardMaterial({ color: 0x82C3D9 }); // light blue
+        var initMat = new THREE.MeshStandardMaterial({ 
+          color: 0x82C3D9, // light blue
+          wireframe: WIREFRAME
+        }); 
         var initTorus = new THREE.Mesh(initGeo, initMat);
         initTorus.position.set(0,0,0);
         scene.add(initTorus);
@@ -93,7 +97,10 @@
             if(intersects.length > 0){
               // part 2: torus
               var torusGeo = new THREE.TorusKnotGeometry(10, 3, 100, 16); 
-              var torusMat = new THREE.MeshStandardMaterial({ color: 0xff69b4 }); // hotpink
+              var torusMat = new THREE.MeshStandardMaterial({ 
+                color: 0xff69b4, // hotpink
+                wireframe: WIREFRAME 
+              }); 
               var torus = new THREE.Mesh(torusGeo, torusMat);
               torus.position.copy(intersects[0].point);
               scene.add(torus);
@@ -139,6 +146,14 @@
                 t.material.needsUpdate = true;
               });
             }
+          }
+
+          // bonus: press w to wireframe 
+          if(e.key === 'w'){
+            WIREFRAME = !WIREFRAME;
+            toruses.forEach(t=>{
+              t.material.wireframe = WIREFRAME;
+            });
           }
         };
 
