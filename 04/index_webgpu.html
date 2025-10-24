@@ -1,0 +1,281 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Assignment 4: flashy fish!</title>
+    <style>
+      html, body {
+        background-color:#000;
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden !important;
+        background: url('https://cs460.org/assignments/04/bg.jpg');
+        background-size: cover;
+      }
+      #c {
+        width: 100%;
+        height: 100%;
+        display:block;
+        background: transparent;
+        cursor: crosshair;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+
+    <script type="module">
+      // WebGPU port of my WebGL flashy fish
+      if (!navigator.gpu) {
+        alert("WebGPU not supported in this browser. Use Chrome or Edge with WebGPU enabled.");
+        throw new Error("WebGPU unsupported");
+      }
+
+      const canvas = document.getElementById('c');
+      // adapt and device
+      const adapter = await navigator.gpu.requestAdapter();
+      const device  = await adapter.requestDevice();
+      const context = canvas.getContext('webgpu');
+      const format  = navigator.gpu.getPreferredCanvasFormat();
+
+      // resize handling
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const w = Math.floor(window.innerWidth * dpr);
+        const h = Math.floor(window.innerHeight * dpr);
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w; canvas.height = h;
+        }
+      }
+      resizeCanvas();
+      new ResizeObserver(() => { resizeCanvas(); context.configure({ device, format, alphaMode: 'premultiplied' }); }).observe(canvas);
+      context.configure({ device, format, alphaMode: 'premultiplied' });
+
+      // geometry
+      const fishVerts = new Float32Array([
+         0.5,  0.0, 0.0,
+         0.2,  0.25, 0.0,
+        -0.2,  0.15, 0.0,
+        -0.4,  0.3, 0.0,
+        -0.4, -0.3, 0.0,
+        -0.2, -0.15,0.0,
+         0.2, -0.25,0.0
+      ]);
+      const fishIdx = new Uint16Array([0,1,6, 1,2,6, 2,5,6, 2,3,5, 3,4,5]);
+
+      // create GPU buffers
+      const vertBuf = device.createBuffer({
+        size: fishVerts.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+      });
+      device.queue.writeBuffer(vertBuf, 0, fishVerts.buffer, fishVerts.byteOffset, fishVerts.byteLength);
+
+      // index buffer
+      const idxPad = new Uint32Array(Math.ceil(fishIdx.length / 2) * 2);
+      for (let i=0;i<fishIdx.length;i++) idxPad[i] = fishIdx[i];
+      const idxBuf = device.createBuffer({
+        size: idxPad.byteLength,
+        usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST
+      });
+      device.queue.writeBuffer(idxBuf, 0, idxPad.buffer);
+
+      // eye quad
+      const eyeQuad = new Float32Array([
+        -0.02, -0.02, 0.0,
+         0.02, -0.02, 0.0,
+         0.02,  0.02, 0.0,
+        -0.02, -0.02, 0.0,
+         0.02,  0.02, 0.0,
+        -0.02,  0.02, 0.0
+      ]);
+      const eyeBufStatic = device.createBuffer({
+        size: eyeQuad.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+      });
+      device.queue.writeBuffer(eyeBufStatic, 0, eyeQuad.buffer);
+
+      // pipeline and shaders
+      const bindGroupLayout = device.createBindGroupLayout({
+        entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }]
+      });
+      const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });
+
+      const wgsl = `struct U { transform : mat4x4<f32>, color : vec4<f32> };
+        @binding(0) @group(0) var<uniform> uniforms : U;
+
+        struct VSOut { @builtin(position) pos : vec4<f32>, @location(0) v_color : vec4<f32> };
+        @vertex fn vs_main(@location(0) pos : vec3<f32>) -> VSOut {
+          var o : VSOut;
+          o.pos = uniforms.transform * vec4<f32>(pos, 1.0);
+          o.v_color = uniforms.color;
+          return o;
+        }
+        @fragment fn fs_main(in : VSOut) -> @location(0) vec4<f32> { return in.v_color; }`;
+
+      const module = device.createShaderModule({ code: wgsl });
+
+      const blend = {
+        color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+        alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' }
+      };
+
+      const pipeline = device.createRenderPipeline({
+        layout: pipelineLayout,
+        vertex: {
+          module, entryPoint: 'vs_main',
+          buffers: [{ arrayStride: 12, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }] }]
+        },
+        fragment: { module, entryPoint: 'fs_main', targets: [{ format, blend }] },
+        primitive: { topology: 'triangle-list', cullMode: 'none' },
+        multisample: { count: 1 }
+      });
+
+      // scene state
+      let all_fish = [];
+      const followSpeed = 0.05;
+      let mouseNDC = { x: 0, y: 0 };
+
+      // create fish entries with uniform buffers and bindgroups
+      function createFish(offset, color, scale = 1, direction = 1) {
+        const bodyUB = device.createBuffer({ size: 256, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        const eyeUB  = device.createBuffer({ size: 256, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        const bodyBG = device.createBindGroup({ layout: bindGroupLayout, entries: [{ binding: 0, resource: { buffer: bodyUB } }] });
+        const eyeBG  = device.createBindGroup({ layout: bindGroupLayout, entries: [{ binding: 0, resource: { buffer: eyeUB } }] });
+        return {
+          v: vertBuf, i: idxBuf, eyeV: eyeBufStatic,
+          bodyUB, eyeUB, bodyBG, eyeBG,
+          off: [offset[0], offset[1], offset[2] || 0],
+          col: [color[0], color[1], color[2], color[3] === undefined ? 1.0 : color[3]],
+          sc: scale, dir: direction
+        };
+      }
+
+      // populate fishes: big fish and then 100 smalls
+      all_fish.push(createFish([0,0,0], [1,0,0,0.9], 1, -1));
+      for (let i = 0; i < 100; i++) {
+        const col = [Math.random(), Math.random(), Math.random(), 0.6 + 0.4*Math.random()];
+        const off = [Math.random()*2 - 1, (Math.random()*2 - 1)*0.8, 0];
+        const sc = 0.06 + Math.random() * 0.25;
+        all_fish.push(createFish(off, col, sc, 1));
+      }
+
+      // mouse
+      canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        mouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouseNDC.y = 1 - ((e.clientY - rect.top) / rect.height) * 2;
+      });
+
+      // helpers
+      function makeTransform(x, y, s, dir, theta) {
+        const cosT = Math.cos(theta), sinT = Math.sin(theta);
+        // column major 4x4
+        return new Float32Array([
+          dir*s*cosT,  s*sinT, 0, 0,
+         -s*sinT,     dir*s*cosT, 0, 0,
+          0,           0,       dir*s, 0,
+          x,           y,       0, 1
+        ]);
+      }
+
+      function writeUniform(buffer, transform, color) {
+        const arr = new Float32Array(20);
+        arr.set(transform, 0);
+        arr.set(color, 16);
+        device.queue.writeBuffer(buffer, 0, arr.buffer, arr.byteOffset, arr.byteLength);
+      }
+
+      function checkCollision(bigOff, bigScale, smallOff, smallScale) {
+        const br = bigScale * 0.5;
+        const sr = smallScale * 0.5;
+        const dx = bigOff[0] - smallOff[0], dy = bigOff[1] - smallOff[1];
+        return Math.hypot(dx, dy) <= br + sr;
+      }
+
+      // animation
+      function frame(now) {
+        const t = now * 0.001;
+        // big fish follows mouse
+        const big = all_fish[0];
+        big.off[0] += (mouseNDC.x - big.off[0]) * followSpeed;
+        big.off[1] += (mouseNDC.y - big.off[1]) * followSpeed;
+
+        // small fish motion
+        for (let i = 1; i < all_fish.length; i++) {
+          const f = all_fish[i];
+          f.off[0] += 0.005 * f.dir;
+          f.off[1] += (Math.random() - 0.5) * 0.01;
+          if (f.off[0] > 1.4) { f.off[0] = -1.4; f.dir = 1; }
+          if (f.off[0] < -1.4) { f.off[0] = 1.4; f.dir = -1; }
+        }
+
+        const encoder = device.createCommandEncoder();
+        const view = context.getCurrentTexture().createView();
+        const pass = encoder.beginRenderPass({
+          colorAttachments: [{
+            view,
+            clearValue: { r: 0, g: 0, b: 0, a: 0 },
+            loadOp: 'clear',
+            storeOp: 'store'
+          }]
+        });
+
+        pass.setPipeline(pipeline);
+
+        for (let i = 0; i < all_fish.length; i++) {
+          const f = all_fish[i];
+          const theta = Math.sin(t * 2.0 + i) * 0.2 * f.sc;
+          const transform = makeTransform(f.off[0], f.off[1], f.sc, f.dir, theta);
+
+          const a = 0.6 + 0.4 * Math.sin(t * 2.0);
+          const isColliding = i !== 0 && checkCollision(big.off, big.sc, f.off, f.sc);
+
+          let color;
+          if (i === 0) {
+            color = [1, 0, 0, 0.9];
+          } else if (isColliding) {
+            color = [0.9 + 0.08*Math.sin(t + 0.0), 0.5 + 0.08*Math.sin(t + 2.0), 0.7 + 0.08*Math.sin(t + 4.0), 1.0];
+          } else {
+            color = [0.3 + 0.2*Math.sin(t + 0.0), 0.6 + 0.2*Math.sin(t + 2.0), 0.9 + 0.1*Math.sin(t + 4.0), a * (f.col[3] || 1)];
+          }
+
+          // body uniforms and draw
+          writeUniform(f.bodyUB, transform, color);
+          pass.setBindGroup(0, f.bodyBG);
+          pass.setVertexBuffer(0, f.v);
+          pass.setIndexBuffer(f.i, 'uint32');
+          pass.drawIndexed(fishIdx.length, 1, 0, 0, 0);
+
+          // eye
+          {
+            const localX = 0.18;
+            const localY = 0.15;
+            const cosR = Math.cos(theta);
+            const sinR = Math.sin(theta);
+            const worldX = f.off[0] + (localX * cosR - localY * sinR) * f.sc * f.dir;
+            const worldY = f.off[1] + (localX * sinR + localY * cosR) * f.sc;
+
+            const eyeTransform = new Float32Array([
+              f.sc * f.dir, 0, 0, 0,
+              0, f.sc, 0, 0,
+              0, 0, f.sc, 0,
+              worldX, worldY, 0, 1
+            ]);
+
+            writeUniform(f.eyeUB, eyeTransform, [0, 0, 0, 0.4]);
+            pass.setBindGroup(0, f.eyeBG);
+            pass.setVertexBuffer(0, f.eyeV);
+            pass.draw(6, 1, 0, 0);
+          }
+        }
+
+        pass.end();
+        device.queue.submit([encoder.finish()]);
+        requestAnimationFrame(frame);
+      }
+
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>
