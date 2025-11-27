@@ -20,11 +20,11 @@
   <canvas id="renderCanvas"></canvas>
 
   <div id="controls">
-    <button data-mat="original" class="active">Original</button>
-    <button data-mat="holo">Holo</button>
-    <button data-mat="glass">Glass</button>
-    <button data-mat="sss">SSS</button>
-    <button data-mat="iri">Iri</button>
+    <button data-mat="original" class="active">original</button>
+    <button data-mat="holo">holo</button>
+    <button data-mat="glass">glass</button>
+    <button data-mat="sss">sss</button>
+    <button data-mat="iri">iri</button>
   </div>
 
   <script type="module">
@@ -70,7 +70,8 @@
 
       // holo
       const holo = new BABYLON.PBRMaterial("holo", scene);
-      holo.metallic = 0.9; holo.roughness = 0.05;
+      holo.metallic = 0.9; 
+      holo.roughness = 0.05;
       holo.albedoColor = new BABYLON.Color3(0.1, 0.4, 0.9);
       holo.emissiveColor = new BABYLON.Color3(0, 0.6, 1.2);
       materials.holo = holo;
@@ -78,7 +79,9 @@
       // glass
       const glass = new BABYLON.PBRMaterial("glass", scene);
       glass.albedoColor = new BABYLON.Color3(1,1,1);
-      glass.roughness = 0; glass.alpha = 0.25;
+      glass.metallic = 0.0;
+      glass.roughness = 0; 
+      glass.alpha = 0.25;
       glass.indexOfRefraction = 1.5;
       glass.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND;
       glass.linkRefractionWithTransparency = true;
@@ -87,6 +90,7 @@
       // sss
       const sss = new BABYLON.PBRMaterial("sss", scene);
       sss.albedoColor = new BABYLON.Color3(1.0, 0.78, 0.6);
+      sss.metallic = 0.0;
       sss.roughness = 0.35;
       sss.subSurface.isTranslucencyEnabled = true;
       sss.subSurface.translucencyIntensity = 0.8;
@@ -95,7 +99,8 @@
       // iri
       const iri = new BABYLON.PBRMaterial("iri", scene);
       iri.albedoColor = new BABYLON.Color3(0.2, 0.2, 0.25);
-      iri.metallic = 1; iri.roughness = 0.15;
+      iri.metallic = 1; 
+      iri.roughness = 0.15;
       if (iri.iridescence) {
         iri.iridescence.isEnabled = true;
         iri.iridescence.intensity = 1;
