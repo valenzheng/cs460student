@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Assignment 05: Super Bonus</title>
+  
+  <style>
+    html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:black; }
+    #renderCanvas { width:100%; height:100%; display:block; }
+    #controls { position:fixed; top:10px; left:10px; z-index:20; }
+    #controls button { display:inline-block; margin-right:6px; padding:6px 12px; background:#1a2335; color:#E1EFFF; border:none; border-radius:20px; font-size:10px; cursor:pointer; }
+    #controls button.active { background:#050911; }
+  </style>
+
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/loaders/babylon.glTF2FileLoader.min.js"></script>
+</head>
+
+<body>
+  <canvas id="renderCanvas"></canvas>
+
+  <div id="controls">
+    <button data-mat="original" class="active">Original</button>
+    <button data-mat="holo">Holo</button>
+    <button data-mat="glass">Glass</button>
+    <button data-mat="sss">SSS</button>
+    <button data-mat="iri">Iri</button>
+  </div>
+
+  <script type="module">
+    const canvas = document.getElementById("renderCanvas");
+
+    // engine
+    let engine;
+    try {
+      engine = new BABYLON.WebGPUEngine(canvas);
+      await engine.initAsync();
+    } catch {
+      engine = new BABYLON.Engine(canvas, true);
+    }
+
+    const scene = new BABYLON.Scene(engine);
+
+    // load model
+    await BABYLON.SceneLoader.AppendAsync("", "poly.glb", scene);
+
+    // camera
+    scene.createDefaultCameraOrLight(true, true, true);
+    scene.activeCamera.attachControl(canvas, true);
+    scene.activeCamera.alpha = Math.PI - 0.5;
+    scene.activeCamera.beta = Math.PI / 2.2;
+    scene.activeCamera.radius = 0.2;
+
+    // materials
+    const buttons = [...document.querySelectorAll("#controls button")];
+    const targetMeshes = scene.meshes.filter(m => m.material);
+    const originalMaterials = new Map();
+    const materials = {};
+
+    targetMeshes.forEach(m => originalMaterials.set(m, m.material));
+
+    setupMaterials();
+    setupUI();
+
+    function setupMaterials() {
+      scene.environmentTexture = BABYLON.CubeTexture.CreateFromPrefilteredData(
+        "https://assets.babylonjs.com/environments/environmentSpecular.env",
+        scene
+      );
+
+      // holo
+      const holo = new BABYLON.PBRMaterial("holo", scene);
+      holo.metallic = 0.9; holo.roughness = 0.05;
+      holo.albedoColor = new BABYLON.Color3(0.1, 0.4, 0.9);
+      holo.emissiveColor = new BABYLON.Color3(0, 0.6, 1.2);
+      materials.holo = holo;
+
+      // glass
+      const glass = new BABYLON.PBRMaterial("glass", scene);
+      glass.albedoColor = new BABYLON.Color3(1,1,1);
+      glass.roughness = 0; glass.alpha = 0.25;
+      glass.indexOfRefraction = 1.5;
+      glass.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND;
+      glass.linkRefractionWithTransparency = true;
+      materials.glass = glass;
+
+      // sss
+      const sss = new BABYLON.PBRMaterial("sss", scene);
+      sss.albedoColor = new BABYLON.Color3(1.0, 0.78, 0.6);
+      sss.roughness = 0.35;
+      sss.subSurface.isTranslucencyEnabled = true;
+      sss.subSurface.translucencyIntensity = 0.8;
+      materials.sss = sss;
+
+      // iri
+      const iri = new BABYLON.PBRMaterial("iri", scene);
+      iri.albedoColor = new BABYLON.Color3(0.2, 0.2, 0.25);
+      iri.metallic = 1; iri.roughness = 0.15;
+      if (iri.iridescence) {
+        iri.iridescence.isEnabled = true;
+        iri.iridescence.intensity = 1;
+      }
+      materials.iri = iri;
+    }
+
+    // buttons switch materials
+    function setupUI() {
+      buttons.forEach(btn => {
+        btn.addEventListener("click", () => {
+          const mat = btn.dataset.mat;
+
+          if (mat === "original") {
+            targetMeshes.forEach(m => m.material = originalMaterials.get(m));
+          } else {
+            targetMeshes.forEach(m => m.material = materials[mat]);
+          }
+
+          buttons.forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+        });
+      });
+    }
+
+    engine.runRenderLoop(() => scene.render());
+    addEventListener("resize", () => engine.resize());
+  </script>
+</body>
+</html>
