@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assignment 5</title>
+  <style>
+    /* stretch canvas to full window */
+    body { margin: 0; padding: 0; overflow: hidden; background-color: #000; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    /* stats.js position */
+    .stats { position: absolute; top: 0; left: 0; z-index: 1000; }
+    .tp-dfwv {
+    transform: scale(0.9);
+    transform-origin: top right;
+  }
+  </style>
+  <script src="https://mrdoob.github.io/stats.js/build/stats.min.js"></script>
+</head>
+<body>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+        "tweakpane": "https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js'; // addon
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'; // mesh loading
+    import { AnaglyphEffect } from 'three/addons/effects/AnaglyphEffect.js'; // addon
+    import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js'; // for normals
+    import { Pane } from 'tweakpane'; // for UI
+
+    let scene, camera, renderer, controls, anaglyphEffect, pane, stats;
+    let directionalLight, ambientLight;
+
+    // extend window.SCENE
+    window['SCENE'] = {
+      anaglyph: false, // anaglyph toggle flag
+      lightIntensity: 4.82, // light intensity control
+      poly: null, // original polycam mesh reference
+      blender: null, // edited blender mesh reference
+      blenderHelper: null, // normals helper for blender mesh
+      rotate_poly: false, // polycam rotation flag
+      rotate_blender: false, // blender mesh rotation flag
+      blender_old_material: null, // store original blender material
+
+      // polycam rotation toggle function
+      do_rotate_poly: function() {
+        if (window['SCENE']['poly']) {
+          window['SCENE']['rotate_poly'] = !window['SCENE']['rotate_poly'];
+          console.log(`PolyCam rotation ${window['SCENE']['rotate_poly'] ? 'started' : 'stopped'}`);
+        } else {
+          alert("PolyCam mesh not loaded yet, wait for it to finish loading!");
+        }
+      },
+
+      // blender rotation toggle
+      do_rotate_blender: function() {
+        if (window['SCENE']['blender']) {
+          window['SCENE']['rotate_blender'] = !window['SCENE']['rotate_blender'];
+          console.log(`Blender mesh rotation ${window['SCENE']['rotate_blender'] ? 'started' : 'stopped'}`);
+        } else {
+          alert("Blender mesh not loaded yet, wait for it to finish loading!");
+        }
+      },
+
+      // blender material switcher
+      change_material: function() {
+        const blenderMesh = window['SCENE']['blender'];
+        if (!blenderMesh) {
+          alert("Blender mesh not loaded yet, wait for it to finish loading!");
+          return;
+        }
+
+        if (!window['SCENE']['blender_old_material']) {
+          // save original material and switch to MeshNormalMaterial
+          window['SCENE']['blender_old_material'] = blenderMesh.material.clone();
+          blenderMesh.material = new THREE.MeshNormalMaterial();
+          console.log("Blender mesh material switched to MeshNormalMaterial");
+        } else {
+          // restore original material
+          blenderMesh.material = window['SCENE']['blender_old_material'].clone();
+          window['SCENE']['blender_old_material'] = null;
+          console.log("Blender mesh material restored to original");
+        }
+      }
+    };
+
+    // apply identity quaternion
+    function applyIdentityQuaternion(mesh) {
+      if (!mesh) return;
+      mesh.quaternion.w = 1;
+      mesh.quaternion.x = 0;
+      mesh.quaternion.y = 0;
+      mesh.quaternion.z = 0;
+      console.log("Applied identity quaternion");
+    }
+
+    // initialize tweakpane ui
+    function initTweakpane() {
+      pane = new Pane();
+      pane.containerElem_.style.zIndex = '100';
+
+      // scene panel
+      const sceneui = pane.addFolder({ title: 'Scene' });
+      sceneui.expanded = true;
+
+      // anaglyph toggle
+      sceneui.addBinding(window.SCENE, 'anaglyph', { 
+        label: 'Anaglyph'
+      });
+
+      // light X/Y/Z sliders
+      const lightPos = directionalLight.position;
+      sceneui.addBinding(lightPos, 'x', {
+        min: -100, max: 100, step: 0.01, label: 'Light X',
+        initial: 2.17
+      });
+      sceneui.addBinding(lightPos, 'y', {
+        min: -100, max: 100, step: 0.01, label: 'Light Y',
+        initial: 41.30
+      });
+      sceneui.addBinding(lightPos, 'z', {
+        min: -100, max: 100, step: 0.01, label: 'Light Z',
+        initial: 54.35
+      });
+
+      // light intensity slider
+      sceneui.addBinding(window.SCENE, 'lightIntensity', {
+        min: 0, max: 10, step: 0.01, label: 'Intensity',
+        initial: 4.82
+      }).on('change', (ev) => {
+        directionalLight.intensity = ev.value;
+      });
+
+      // ambient light color picker
+      sceneui.addBinding(ambientLight, 'color', {
+        label: 'AmbientLight Color',
+        format: 'hex',
+        initial: 0xffffff
+      });
+
+      // polycam mesh panel
+      const polyui = pane.addFolder({ title: 'PolyCam Mesh' });
+      polyui.expanded = true;
+
+      // wireframe toggle placeholder
+      window['SCENE'].polyui = polyui;
+
+      // blender mesh panel
+      const blenderui = pane.addFolder({ title: 'Blender Mesh' });
+      blenderui.expanded = true;
+
+      // show normals toggle placeholder
+      window['SCENE'].blenderui = blenderui;
+
+      // sync initial light values
+      directionalLight.intensity = window.SCENE.lightIntensity;
+      directionalLight.position.set(2.17, 41.30, 54.35);
+    }
+
+    // initialize three.js boilerplate
+    function initBoilerplate() {
+      scene = new THREE.Scene();
+
+      // camera setup
+      camera = new THREE.PerspectiveCamera(
+        75, // field of view
+        window.innerWidth / window.innerHeight, // aspect ratio
+        0.1, // zNear
+        10000 // zFar
+      );
+      // camera position
+      camera.position.set(0, 15, 40);
+
+      // renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      document.body.appendChild(renderer.domElement);
+
+      // orbit controls
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      // anaglyph effect
+      anaglyphEffect = new AnaglyphEffect(renderer);
+      anaglyphEffect.setSize(window.innerWidth, window.innerHeight);
+
+      // configure 1 directional and 1 ambient light
+      ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+      scene.add(ambientLight);
+
+      directionalLight = new THREE.DirectionalLight(
+        0xffffff,
+        window.SCENE.lightIntensity
+      );
+      scene.add(directionalLight);
+
+      // window resize handler
+      window.addEventListener('resize', onWindowResize);
+
+      // initialize stats.js
+      initStats();
+
+      // initialize tweakpane ui
+      initTweakpane();
+    }
+
+    // stats.js initialization
+    function initStats() {
+      stats = new Stats();
+      stats.showPanel(0);
+      stats.domElement.classList.add('stats');
+      document.body.appendChild(stats.domElement);
+      console.log("Stats.js initialized, FPS panel active");
+    }
+
+    // window resize helper
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      anaglyphEffect.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // load original polycam mesh
+    function loadOriginalPolyCamMesh() {
+      const loader = new GLTFLoader();
+      loader.load(
+        'poly.glb',
+        (gltf) => {
+          const polyMesh = gltf.scenes[0].children[0];
+
+          polyMesh.scale.set(150, 150, 150);
+
+          // apply identity quaternion
+          applyIdentityQuaternion(polyMesh);
+
+          polyMesh.translateX(8);
+
+          scene.add(gltf.scene);
+
+          // store mesh reference in window.SCENE
+          window['SCENE'].poly = polyMesh;
+
+          // bind wireframe toggle to polycam material
+          window['SCENE'].polyui.addBinding(polyMesh.material, 'wireframe', {
+            label: 'Wireframe'
+          }).on('change', (ev) => {
+            console.log(`PolyCam wireframe ${ev.value ? 'enabled' : 'disabled'}`);
+          });
+
+          // rotate button
+          window['SCENE'].polyui.addButton({ title: 'rotate!' })
+            .on('click', () => window.SCENE.do_rotate_poly());
+
+          console.log('Original PolyCam mesh loaded!');
+        },
+        (xhr) => console.log(`Loading original mesh: ${(xhr.loaded / xhr.total * 100).toFixed(1)}%`),
+        (error) => {
+          console.error('Error loading poly.glb:', error);
+          alert('Failed to load poly.glb');
+        }
+      );
+    }
+
+    // load edited blender mesh
+    function loadEditedBlenderMesh() {
+      const loader = new GLTFLoader();
+      loader.load(
+        'littleprince.glb',
+        (gltf) => {
+          const editedMesh = gltf.scenes[0].children[0];
+
+          editedMesh.scale.set(150, 150, 150);
+
+          // apply identity quaternion
+          applyIdentityQuaternion(editedMesh);
+
+          editedMesh.translateX(-8);
+
+          scene.add(gltf.scene);
+
+          // store blender mesh reference
+          window['SCENE'].blender = editedMesh;
+
+          // create VertexNormalsHelper
+          const normalsHelper = new VertexNormalsHelper(
+            editedMesh,
+            0.5,
+            0x0000ff,
+            1
+          );
+          normalsHelper.visible = false; // hidden
+          scene.add(normalsHelper);
+          window['SCENE'].blenderHelper = normalsHelper;
+
+          // show normals toggle
+          window['SCENE'].blenderui.addBinding(normalsHelper, 'visible', {
+            label: 'Show normals!'
+          }).on('change', (ev) => {
+            console.log(`Blender normals helper ${ev.value ? 'shown' : 'hidden'}`);
+          });
+
+          // change material button
+          window['SCENE'].blenderui.addButton({ title: 'Change Material' })
+            .on('click', () => window.SCENE.change_material());
+
+          // rotate button
+          window['SCENE'].blenderui.addButton({ title: 'rotate!' })
+            .on('click', () => window.SCENE.do_rotate_blender());
+
+          console.log('Edited blender mesh loaded!');
+        },
+        (xhr) => console.log(`Loading edited mesh: ${(xhr.loaded / xhr.total * 100).toFixed(1)}%`),
+        (error) => {
+          console.error('Error loading littleprince.glb:', error);
+          alert('Failed to load littleprince.glb');
+        }
+      );
+    }
+
+    // animation loop
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // update stats.js every frame
+      stats.update();
+
+      controls.update();
+
+      // sync light intensity
+      if (directionalLight.intensity !== window.SCENE.lightIntensity) {
+        directionalLight.intensity = window.SCENE.lightIntensity;
+      }
+
+      // polycam mesh rotation
+      const polyMesh = window['SCENE'].poly;
+      if (polyMesh) {
+        const targetQuaternion = new THREE.Quaternion();
+        if (window['SCENE'].rotate_poly) {
+          // 180° rotation around y axis
+          targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+        } else {
+          // reset to identity quaternion
+          targetQuaternion.set(0, 0, 0, 1);
+        }
+        // smooth slerp interpolation
+        polyMesh.quaternion.slerp(targetQuaternion, 0.01);
+      }
+
+      // blender mesh rotation and normals update
+      const blenderMesh = window['SCENE'].blender;
+      if (blenderMesh) {
+        const targetQuaternion = new THREE.Quaternion();
+        if (window['SCENE'].rotate_blender) {
+          // 180° rotation around y axis
+          targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+        } else {
+          // reset to identity quaternion
+          targetQuaternion.set(0, 0, 0, 1);
+        }
+        // smooth slerp rotation
+        blenderMesh.quaternion.slerp(targetQuaternion, 0.01);
+
+        // update normals helper
+        if (window['SCENE'].blenderHelper && window['SCENE'].blenderHelper.visible) {
+          window['SCENE'].blenderHelper.update();
+        }
+      }
+
+      // render anaglyph or normal
+      if (window['SCENE'].anaglyph) {
+        anaglyphEffect.render(scene, camera);
+      } else {
+        renderer.render(scene, camera);
+      }
+    }
+
+    // initialize all components on window load
+    window.onload = function () {
+      initBoilerplate();
+      loadOriginalPolyCamMesh();
+      loadEditedBlenderMesh();
+      animate();
+      console.log("check console for mesh load status");
+    };
+  </script>
+</body>
+</html>
