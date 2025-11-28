@@ -21,10 +21,10 @@
 
   <div id="controls">
     <button data-mat="original" class="active">original</button>
-    <button data-mat="holo">holo</button>
     <button data-mat="glass">glass</button>
-    <button data-mat="sss">sss</button>
-    <button data-mat="iri">iri</button>
+    <button data-mat="sss">subsurface</button>
+    <button data-mat="holo">holographic</button>
+    <button data-mat="iri">iridescence</button>
   </div>
 
   <script type="module">
@@ -67,15 +67,7 @@
         "https://assets.babylonjs.com/environments/environmentSpecular.env",
         scene
       );
-
-      // holographic
-      const holo = new BABYLON.PBRMaterial("holographic", scene);
-      holo.metallic = 0.9; 
-      holo.roughness = 0.05;
-      holo.albedoColor = new BABYLON.Color3(0.1, 0.4, 0.9);
-      holo.emissiveColor = new BABYLON.Color3(0, 0.6, 1.2);
-      materials.holo = holo;
-
+      
       // opacity, glass
       const glass = new BABYLON.PBRMaterial("glass", scene);
       glass.albedoColor = new BABYLON.Color3(1,1,1);
@@ -89,18 +81,26 @@
       glass.useRadianceOverAlpha = false;
       glass.useSpecularOverAlpha = false;
       materials.glass = glass;
-      
+
       // sub surface scattering, skin tone
-      const sss = new BABYLON.PBRMaterial("subsurface", scene);
+      const sss = new BABYLON.PBRMaterial("sss", scene);
       sss.albedoColor = new BABYLON.Color3(1.0, 0.78, 0.6);
       sss.metallic = 0.0;
       sss.roughness = 0.35;
       sss.subSurface.isTranslucencyEnabled = true;
       sss.subSurface.translucencyIntensity = 0.8;
       materials.sss = sss;
+      
+      // holographic
+      const holo = new BABYLON.PBRMaterial("holographic", scene);
+      holo.metallic = 0.9; 
+      holo.roughness = 0.05;
+      holo.albedoColor = new BABYLON.Color3(0.1, 0.4, 0.9);
+      holo.emissiveColor = new BABYLON.Color3(0, 0.6, 1.2);
+      materials.holo = holo;
 
       // iridescence
-      const iri = new BABYLON.PBRMaterial("iridescene", scene);
+      const iri = new BABYLON.PBRMaterial("iri", scene);
       iri.albedoColor = new BABYLON.Color3(0.2, 0.2, 0.25);
       iri.metallic = 1; 
       iri.roughness = 0.15;
