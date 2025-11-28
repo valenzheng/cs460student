@@ -68,27 +68,30 @@
         scene
       );
 
-      // holo
-      const holo = new BABYLON.PBRMaterial("holo", scene);
+      // holographic
+      const holo = new BABYLON.PBRMaterial("holographic", scene);
       holo.metallic = 0.9; 
       holo.roughness = 0.05;
       holo.albedoColor = new BABYLON.Color3(0.1, 0.4, 0.9);
       holo.emissiveColor = new BABYLON.Color3(0, 0.6, 1.2);
       materials.holo = holo;
 
-      // glass
+      // opacity, glass
       const glass = new BABYLON.PBRMaterial("glass", scene);
       glass.albedoColor = new BABYLON.Color3(1,1,1);
+      glass.alpha = 0.5;
       glass.metallic = 0.0;
-      glass.roughness = 0; 
-      glass.alpha = 0.25;
-      glass.indexOfRefraction = 1.5;
-      glass.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND;
+      glass.roughness = 0.0; 
+      glass.microSurface = 1.0;
+      glass.indexOfRefraction = 1.52;
       glass.linkRefractionWithTransparency = true;
+      glass.transparencyMode = BABYLON.PBRMaterial.PBRMATERIAL_ALPHABLEND;
+      glass.useRadianceOverAlpha = false;
+      glass.useSpecularOverAlpha = false;
       materials.glass = glass;
-
-      // sss
-      const sss = new BABYLON.PBRMaterial("sss", scene);
+      
+      // sub surface scattering, skin tone
+      const sss = new BABYLON.PBRMaterial("subsurface", scene);
       sss.albedoColor = new BABYLON.Color3(1.0, 0.78, 0.6);
       sss.metallic = 0.0;
       sss.roughness = 0.35;
@@ -96,8 +99,8 @@
       sss.subSurface.translucencyIntensity = 0.8;
       materials.sss = sss;
 
-      // iri
-      const iri = new BABYLON.PBRMaterial("iri", scene);
+      // iridescence
+      const iri = new BABYLON.PBRMaterial("iridescene", scene);
       iri.albedoColor = new BABYLON.Color3(0.2, 0.2, 0.25);
       iri.metallic = 1; 
       iri.roughness = 0.15;
